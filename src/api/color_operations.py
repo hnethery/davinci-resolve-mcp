@@ -250,67 +250,77 @@ def add_node(resolve, node_type: str = "serial", label: str = None) -> str:
         
         logger.info(f"Working with clip: {current_clip.GetName()}")
         
-        # Get the clip's grade
-        # This is where the NoneType error typically occurs
-        logger.info("Attempting to get current grade")
+        # According to the API docs, we need to work with the grade differently
+        # The issue is GetCurrentGrade() returns None for ungraded clips
+        # Let's try a different approach using the timeline item's node graph
+        logger.info("Attempting to access node operations through timeline item")
         
-        # First method: Direct approach
         try:
-            current_grade = current_clip.GetCurrentGrade()
-            if current_grade:
-                logger.info("Successfully got current grade using GetCurrentGrade()")
-            else:
-                logger.warning("GetCurrentGrade() returned None")
-        except Exception as e:
-            logger.error(f"Error getting current grade via GetCurrentGrade(): {str(e)}")
-            current_grade = None
-        
-        # Alternative approach if the first method failed
-        if not current_grade:
-            logger.info("Attempting alternative methods to access grade functionality")
+            # First, get the node graph from the timeline item (clip)
+            # Using layer index 1 (1-based indexing as per API docs)
+            node_graph = current_clip.GetNodeGraph(1)
+            if not node_graph:
+                logger.warning("Could not get node graph for layer 1, trying layer 0")
+                try:
+                    node_graph = current_clip.GetNodeGraph(0)
+                except:
+                    node_graph = None
             
-            # Try to select the clip first to ensure it's active
-            try:
-                # Ensure clip is selected in the timeline
-                logger.info("Trying to select the clip in timeline again")
-                current_timeline.SetCurrentVideoItem(current_clip)
-                logger.info(f"Selected clip {current_clip.GetName()} in timeline")
+            if not node_graph:
+                logger.error("Failed to get node graph from timeline item")
+                # If we can't get node graph, try initializing grading first
+                logger.info("Attempting to initialize grading on clip")
                 
-                # Try to get grade again after selection
-                current_grade = current_clip.GetCurrentGrade()
-                if current_grade:
-                    logger.info("Successfully got current grade after selection")
-            except Exception as e:
-                logger.error(f"Error in alternative selection approach: {str(e)}")
-        
-        # Direct node creation if we still don't have a grade object
-        if not current_grade:
-            logger.warning("Could not get grade object, attempting direct node creation")
-            
-            try:
-                # Try using the node graph directly through ColorPage
-                color_page = project_manager.GetCurrentPage()
-                if color_page and hasattr(color_page, "GetNodeGraph"):
-                    node_graph = color_page.GetNodeGraph()
-                    if node_graph:
-                        logger.info("Successfully got node graph through ColorPage")
-                        
-                        # Direct node creation using node graph
-                        if node_type.lower() == "serial":
-                            result = node_graph.AddSerialNode()
-                        elif node_type.lower() == "parallel":
-                            result = node_graph.AddParallelNode()
-                        elif node_type.lower() == "layer":
-                            result = node_graph.AddLayerNode()
-                        
-                        if result:
-                            return f"Successfully added {node_type} node using direct NodeGraph approach"
+                # Try to set a minimal CDL to initialize the grade
+                try:
+                    # Use SetCDL to initialize grading - this should create the grade structure
+                    cdl_result = current_clip.SetCDL({"NodeIndex": 1, "Saturation": 1.0})
+                    if cdl_result:
+                        logger.info("Successfully initialized grading with CDL")
+                        # Try to get the grade again after initialization
+                        current_grade = current_clip.GetCurrentGrade()
+                        if current_grade:
+                            logger.info("Grade object now accessible after CDL initialization")
                         else:
-                            logger.error(f"Failed to add {node_type} node using NodeGraph")
-            except Exception as e:
-                logger.error(f"Error in direct node creation attempt: {str(e)}")
+                            logger.warning("Grade object still not accessible after CDL initialization")
+                    else:
+                        logger.warning("CDL initialization failed")
+                except Exception as cdl_e:
+                    logger.error(f"Error initializing grading with CDL: {str(cdl_e)}")
+                
+                return f"Error adding {node_type} node: Cannot access clip's node structure. The clip may need to be graded first."
             
-            return f"Error adding {node_type} node: Cannot access grade object. The clip may not be properly graded yet."
+            # If we have a node graph, get current node count
+            current_node_count = node_graph.GetNumNodes()
+            logger.info(f"Current node count in graph: {current_node_count}")
+            
+            # The Graph object doesn't have AddSerialNode methods according to API docs
+            # We need to work with the grade object through GetCurrentGrade after initializing
+            current_grade = current_clip.GetCurrentGrade()
+            if not current_grade:
+                # Try initializing with a minimal operation first
+                logger.info("Initializing grade structure")
+                try:
+                    # Try setting a neutral CDL to create the grade structure
+                    init_result = current_clip.SetCDL({
+                        "NodeIndex": 1, 
+                        "Slope": "1.0 1.0 1.0",
+                        "Offset": "0.0 0.0 0.0", 
+                        "Power": "1.0 1.0 1.0",
+                        "Saturation": 1.0
+                    })
+                    if init_result:
+                        logger.info("Grade structure initialized")
+                        current_grade = current_clip.GetCurrentGrade()
+                except Exception as init_e:
+                    logger.error(f"Error initializing grade structure: {str(init_e)}")
+            
+            if not current_grade:
+                return f"Error adding {node_type} node: Cannot initialize grade structure for clip."
+                
+        except Exception as e:
+            logger.error(f"Error in node graph access: {str(e)}")
+            return f"Error adding {node_type} node: {str(e)}"
         
         logger.info("Proceeding with node addition with valid grade object")
         # Add the appropriate type of node
