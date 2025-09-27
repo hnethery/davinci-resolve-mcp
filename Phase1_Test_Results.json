@@ -1,0 +1,59 @@
+{
+  "get_current_node": {
+    "status": "SUCCESS",
+    "result": {
+      "clip_name": "carousel-slowed.mp4",
+      "node_index": 1,
+      "node_count": 2,
+      "name": "Node 1",
+      "enabled": true,
+      "note": "API limitation: Cannot detect 'current' node. Showing primary node (index 1)."
+    }
+  },
+  "apply_lut": {
+    "status": "SUCCESS",
+    "result": "Failed to apply LUT 'test.cube' to node 1. Possible solutions: Try a different .cube LUT size (17x17x17, 33x33x33, or 65x65x65); Verify the LUT file is not corrupted; Try applying the LUT manually in DaVinci Resolve first; Some nodes may not support LUTs (try node 1 instead)"
+  },
+  "add_node_serial": {
+    "status": "FAILED",
+    "error": "Error: Cannot add serial node - API Limitation.\n\nThe DaVinci Resolve scripting API does not provide methods for creating nodes programmatically.\nMethods like AddSerialNode(), AddParallelNode(), and AddLayerNode() do not exist.\n\nTo add nodes manually:\n1. Switch to the Color page in DaVinci Resolve\n2. Right-click in the node graph\n3. Select \"Add Node\" > \"Serial\"\n4. Set the label to \"Test Node\" if desired\n\nThis is a limitation of the DaVinci Resolve API, not a bug in this MCP server.",
+    "type": "string_error"
+  },
+  "copy_grade": {
+    "status": "FAILED",
+    "error": "Error: Cannot copy grade to the same clip. Please specify a different target clip.",
+    "type": "string_error"
+  },
+  "get_color_wheels": {
+    "status": "SUCCESS",
+    "result": {
+      "node_index": 1,
+      "node_name": "Node 1",
+      "clip_name": "carousel-slowed.mp4",
+      "wheels": {
+        "lift": {
+          "note": "Cannot read current values - API only supports SetCDL() for writing",
+          "usage": "Use set_color_wheel_param(resolve, 'lift', 'red', value) to modify"
+        },
+        "gamma": {
+          "note": "Cannot read current values - API only supports SetCDL() for writing",
+          "usage": "Use set_color_wheel_param(resolve, 'gamma', 'red', value) to modify"
+        },
+        "gain": {
+          "note": "Cannot read current values - API only supports SetCDL() for writing",
+          "usage": "Use set_color_wheel_param(resolve, 'gain', 'red', value) to modify"
+        },
+        "saturation": {
+          "note": "Cannot read current values - API only supports SetCDL() for writing",
+          "usage": "Use set_color_wheel_param() with CDL Saturation parameter"
+        }
+      },
+      "api_limitation": "DaVinci Resolve scripting API only supports writing CDL values via SetCDL(). Reading current CDL values is not supported.",
+      "recommendation": "Use set_color_wheel_param() to modify color wheels. Values cannot be read back due to API limitations."
+    }
+  },
+  "set_color_wheel_param": {
+    "status": "SUCCESS",
+    "result": "SUCCESS: Set lift red to 0.1 for Node 1. CDL_DATA: {'NodeIndex': '1', 'Slope': '1.0 1.0 1.0', 'Offset': '0.1 0.0 0.0', 'Power': '1.0 1.0 1.0', 'Saturation': '1.0'} | SETCDL_RETURNED: True (type: <class 'bool'>)"
+  }
+}
