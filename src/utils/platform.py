@@ -6,6 +6,9 @@ Platform-specific functionality for DaVinci Resolve MCP Server
 import os
 import sys
 import platform
+import logging
+
+logger = logging.getLogger("davinci-resolve-mcp.platform")
 
 def get_platform():
     """Identify the current operating system platform.
@@ -80,5 +83,5 @@ def setup_environment():
         return True
     
     except Exception as e:
-        print(f"Error setting up environment: {str(e)}")
+        logger.error(f"Error setting up environment: {str(e)}")
         return False 

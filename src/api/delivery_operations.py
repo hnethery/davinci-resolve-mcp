@@ -47,6 +47,10 @@ def get_render_presets(resolve) -> List[Dict[str, Any]]:
     # Get project presets
     try:
         project_presets = render_settings.GetRenderPresetList()
+        if project_presets is None:
+            logger.warning("GetRenderPresetList() returned None - no project presets available")
+            project_presets = []
+        
         for preset in project_presets:
             preset_info = {
                 "name": preset,
@@ -79,6 +83,10 @@ def get_render_presets(resolve) -> List[Dict[str, Any]]:
     # Get system presets
     try:
         system_presets = render_settings.GetSystemPresetList()
+        if system_presets is None:
+            logger.warning("GetSystemPresetList() returned None - no system presets available")
+            system_presets = []
+            
         for preset in system_presets:
             preset_info = {
                 "name": preset,

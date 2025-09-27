@@ -268,7 +268,7 @@ def add_marker(resolve, frame: Optional[int] = None, color: str = "Blue", note: 
         timeline_start = current_timeline.GetStartFrame()
         timeline_end = current_timeline.GetEndFrame()
         timeline_name = current_timeline.GetName()
-        print(f"Timeline '{timeline_name}' frame range: {timeline_start}-{timeline_end}")
+        logger.info(f"Timeline '{timeline_name}' frame range: {timeline_start}-{timeline_end}")
     except Exception as e:
         return f"Error: Failed to get timeline information: {str(e)}"
     
@@ -372,7 +372,7 @@ def add_marker(resolve, frame: Optional[int] = None, color: str = "Blue", note: 
                 return f"Error: Frame {frame} is not within any media in the timeline. Markers must be on actual clips."
         
         # Add the marker
-        print(f"Adding marker at frame {frame} with color {color}")
+        logger.info(f"Adding marker at frame {frame} with color {color}")
         marker_result = current_timeline.AddMarker(
             frame,  # frameId
             color,  # color

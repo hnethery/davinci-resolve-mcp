@@ -9,6 +9,7 @@ Version: 1.3.8 - Improved Cursor Integration, Entry Point Standardization
 import os
 import sys
 import logging
+import datetime
 from typing import List, Dict, Any, Optional, Union
 
 # Add src directory to Python path
@@ -84,11 +85,11 @@ from src.utils.project_properties import (
     get_project_info
 )
 
-# Configure logging
+# Configure logging - explicitly use stderr to avoid MCP protocol conflicts
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    handlers=[logging.StreamHandler()]
+    handlers=[logging.StreamHandler(sys.stderr)]
 )
 logger = logging.getLogger("davinci-resolve-mcp")
 
@@ -127,6 +128,86 @@ except Exception as e:
 # ------------------
 # MCP Tools/Resources
 # ------------------
+
+# ------------------
+# Error Handling Helpers
+# ------------------
+
+def validate_resolve_connection():
+    """Validate connection to DaVinci Resolve."""
+    if resolve is None:
+        return {"error": "Not connected to DaVinci Resolve", "fix": "Ensure DaVinci Resolve is running"}
+    return None
+
+def validate_project_access():
+    """Validate project manager and current project access."""
+    error = validate_resolve_connection()
+    if error:
+        return error
+    
+    project_manager = resolve.GetProjectManager()
+    if not project_manager:
+        return {"error": "Failed to get Project Manager", "fix": "Restart DaVinci Resolve"}
+    
+    current_project = project_manager.GetCurrentProject()
+    if not current_project:
+        return {"error": "No project currently open", "fix": "Open or create a project"}
+    
+    return None
+
+def validate_page_access(required_page: str):
+    """Validate that we're on the required page, switch if necessary."""
+    error = validate_resolve_connection()
+    if error:
+        return error
+        
+    try:
+        current_page = resolve.GetCurrentPage()
+        if current_page != required_page:
+            logger.info(f"Switching from {current_page} to {required_page} page")
+            success = resolve.OpenPage(required_page)
+            if not success:
+                return {
+                    "error": f"Failed to switch to {required_page} page", 
+                    "fix": f"Manually switch to {required_page} page in DaVinci Resolve"
+                }
+        return None
+    except Exception as e:
+        return {"error": f"Error accessing pages: {str(e)}", "fix": "Check DaVinci Resolve status"}
+
+def safe_method_call(obj, method_name: str, default=None, description: str = "object"):
+    """Safely call a method on an object, handling None objects and missing methods."""
+    if obj is None:
+        logger.warning(f"{description} is None, cannot call {method_name}")
+        return default
+    
+    if not hasattr(obj, method_name):
+        logger.warning(f"{description} has no method {method_name}")
+        return default
+        
+    method = getattr(obj, method_name)
+    if not callable(method):
+        logger.warning(f"{description}.{method_name} is not callable")
+        return default
+    
+    try:
+        return method()
+    except Exception as e:
+        logger.warning(f"Error calling {description}.{method_name}(): {str(e)}")
+        return default
+
+def wrap_resource_errors(func):
+    """Decorator to wrap MCP resources with consistent error handling."""
+    from functools import wraps
+    
+    @wraps(func)
+    def wrapper(*args, **kwargs):
+        try:
+            return func(*args, **kwargs)
+        except Exception as e:
+            logger.error(f"Error in {func.__name__}: {str(e)}")
+            return {"error": f"Internal error in {func.__name__}: {str(e)}", "fix": "Check DaVinci Resolve connection and try again"}
+    return wrapper
 
 @mcp.resource("resolve://version")
 def get_resolve_version() -> str:
@@ -218,6 +299,185 @@ def get_project_settings() -> Dict[str, Any]:
         return current_project.GetSetting('')
     except Exception as e:
         return {"error": f"Failed to get project settings: {str(e)}"}
+
+@mcp.resource("resolve://context/full-state")
+def get_full_context() -> Dict[str, Any]:
+    """Get comprehensive project context for AI agent decision-making."""
+    if resolve is None:
+        return {"error": "Not connected to DaVinci Resolve"}
+    
+    project_manager = resolve.GetProjectManager()
+    if not project_manager:
+        return {"error": "Failed to get Project Manager"}
+    
+    current_project = project_manager.GetCurrentProject()
+    if not current_project:
+        return {"error": "No project currently open"}
+    
+    try:
+        context = {
+            "timestamp": datetime.datetime.now().isoformat(),
+            "project": {},
+            "timeline": {},
+            "performance": {},
+            "pages": {},
+            "warnings": [],
+            "recommendations": []
+        }
+        
+        # Project information
+        try:
+            render_jobs = current_project.GetRenderJobs()
+            context["project"] = {
+                "name": current_project.GetName(),
+                "timeline_count": current_project.GetTimelineCount(),
+                "current_timeline": None,
+                "render_jobs": len(render_jobs) if render_jobs else 0
+            }
+            
+            current_timeline = current_project.GetCurrentTimeline()
+            if current_timeline:
+                context["project"]["current_timeline"] = current_timeline.GetName()
+                context["timeline"] = {
+                    "name": current_timeline.GetName(),
+                    "start_frame": current_timeline.GetStartFrame(),
+                    "end_frame": current_timeline.GetEndFrame(),
+                    "track_count": {
+                        "video": current_timeline.GetTrackCount("video"),
+                        "audio": current_timeline.GetTrackCount("audio")
+                    }
+                }
+        except Exception as e:
+            context["warnings"].append(f"Error getting project info: {str(e)}")
+        
+        # Current page and available operations
+        try:
+            current_page = resolve.GetCurrentPage()
+            context["pages"] = {
+                "current": current_page,
+                "available_operations": {
+                    "media": current_page in ["media", "edit", "cut"],
+                    "edit": current_page in ["edit", "cut"], 
+                    "color": current_page == "color",
+                    "fairlight": current_page == "fairlight",
+                    "deliver": current_page == "deliver"
+                }
+            }
+        except Exception as e:
+            context["warnings"].append(f"Error getting page info: {str(e)}")
+        
+        # Performance analysis
+        try:
+            settings = current_project.GetSetting('')
+            context["performance"] = {
+                "optimized_media": settings.get("perfOptimisedMediaOn", "0") == "1",
+                "proxy_mode": settings.get("perfProxyMediaMode", "0"),
+                "render_cache": settings.get("perfRenderCacheMode", "none"),
+                "auto_render_cache": settings.get("perfAutoRenderCacheEnable", "0") == "1",
+                "cache_location": settings.get("perfCacheClipsLocation", ""),
+                "super_scale": settings.get("superScale", 0) == 1
+            }
+            
+            # Performance recommendations based on documented settings
+            if not context["performance"]["optimized_media"] and context["project"]["timeline_count"] > 2:
+                context["recommendations"].append("Consider enabling optimized media for better performance")
+            
+            if context["performance"]["render_cache"] == "none" and current_timeline and current_timeline.GetTrackCount("video") > 2:
+                context["recommendations"].append("Enable render cache for complex timelines")
+                
+        except Exception as e:
+            context["warnings"].append(f"Error analyzing performance: {str(e)}")
+        
+        return context
+        
+    except Exception as e:
+        return {"error": f"Failed to get full context: {str(e)}"}
+
+@mcp.resource("resolve://intelligence/recommendations")
+def get_intelligent_recommendations() -> Dict[str, Any]:
+    """Get AI-powered workflow recommendations based on current project state."""
+    if resolve is None:
+        return {"error": "Not connected to DaVinci Resolve"}
+    
+    project_manager = resolve.GetProjectManager()
+    if not project_manager:
+        return {"error": "Failed to get Project Manager"}
+    
+    current_project = project_manager.GetCurrentProject()
+    if not current_project:
+        return {"error": "No project currently open"}
+    
+    try:
+        recommendations = {
+            "workflow_type": "unknown",
+            "confidence": 0.0,
+            "performance": [],
+            "color": [],
+            "organization": [],
+            "delivery": []
+        }
+        
+        settings = current_project.GetSetting('')
+        timeline = current_project.GetCurrentTimeline()
+        
+        # Detect workflow type
+        frame_rate = float(settings.get("timelineFrameRate", 30))
+        resolution = f"{settings.get('timelineResolutionWidth', 1920)}x{settings.get('timelineResolutionHeight', 1080)}"
+        color_science = settings.get("colorScienceMode", "")
+        
+        if resolution == "1920x1080" and frame_rate >= 30:
+            if frame_rate >= 60:
+                recommendations["workflow_type"] = "gaming_content"
+                recommendations["confidence"] = 0.8
+            else:
+                recommendations["workflow_type"] = "social_media"
+                recommendations["confidence"] = 0.7
+        elif resolution in ["3840x2160", "4096x2160"]:
+            recommendations["workflow_type"] = "professional_4k"
+            recommendations["confidence"] = 0.9
+        elif frame_rate == 24:
+            recommendations["workflow_type"] = "cinematic"
+            recommendations["confidence"] = 0.8
+        
+        # Performance recommendations
+        if settings.get("perfOptimisedMediaOn", "0") == "0":
+            recommendations["performance"].append({
+                "priority": "high",
+                "action": "enable_optimized_media",
+                "description": "Enable optimized media for smoother playback",
+                "reason": "Current project has no optimized media enabled"
+            })
+        
+        if settings.get("perfProxyMediaMode", "0") == "0" and resolution.startswith("38"):
+            recommendations["performance"].append({
+                "priority": "medium", 
+                "action": "enable_proxy_mode",
+                "description": "Generate proxy media for 4K content",
+                "reason": "4K timeline detected without proxy workflow"
+            })
+        
+        # Color workflow recommendations
+        if color_science == "davinciYRGB" and "hdr" in settings.get("timelineWorkingLuminanceMode", "").lower():
+            recommendations["color"].append({
+                "priority": "medium",
+                "action": "consider_aces_workflow", 
+                "description": "Consider ACEScct for HDR content",
+                "reason": "HDR timeline with legacy color science"
+            })
+        
+        # Organization recommendations
+        if timeline and timeline.GetTrackCount("video") > 8:
+            recommendations["organization"].append({
+                "priority": "low",
+                "action": "organize_tracks",
+                "description": "Consider using fewer video tracks with compounds",
+                "reason": f"Timeline has {timeline.GetTrackCount('video')} video tracks"
+            })
+        
+        return recommendations
+        
+    except Exception as e:
+        return {"error": f"Failed to generate recommendations: {str(e)}"}
 
 @mcp.resource("resolve://project-setting/{setting_name}")
 def get_project_setting(setting_name: str) -> Dict[str, Any]:
@@ -1230,13 +1490,14 @@ def get_all_media_pool_clips(media_pool):
     root_folder = media_pool.GetRootFolder()
     
     def process_folder(folder):
-        folder_clips = folder.GetClipList()
+        folder_clips = safe_method_call(folder, "GetClipList", [], "folder")
         if folder_clips:
             clips.extend(folder_clips)
         
-        sub_folders = folder.GetSubFolderList()
-        for sub_folder in sub_folders:
-            process_folder(sub_folder)
+        sub_folders = safe_method_call(folder, "GetSubFolderList", [], "folder")
+        if sub_folders:
+            for sub_folder in sub_folders:
+                process_folder(sub_folder)
     
     process_folder(root_folder)
     return clips
@@ -1687,7 +1948,8 @@ def generate_optimized_media(clip_names: List[str] = None) -> str:
         for name in clip_names:
             found = False
             for clip in all_clips:
-                if clip.GetName() == name:
+                clip_name = safe_method_call(clip, "GetName", "", "clip")
+                if clip_name == name:
                     clips_to_process.append(clip)
                     found = True
                     break
@@ -1707,7 +1969,10 @@ def generate_optimized_media(clip_names: List[str] = None) -> str:
         # Select the clips
         media_pool.SetCurrentFolder(media_pool.GetRootFolder())
         for clip in clips_to_process:
-            clip.AddFlag("Green")  # Temporarily add flag to help with selection
+            try:
+                clip.AddFlag("Green")
+            except:
+                pass  # Temporarily add flag to help with selection
         
         # Switch to Media page if not already there
         current_page = resolve.GetCurrentPage()
@@ -1722,7 +1987,10 @@ def generate_optimized_media(clip_names: List[str] = None) -> str:
         
         # Remove temporary flags
         for clip in clips_to_process:
-            clip.ClearFlags("Green")
+            try:
+                clip.ClearFlags("Green")
+            except:
+                pass
         
         if result:
             return f"Successfully started optimized media generation for {len(clips_to_process)} clips"
@@ -1732,7 +2000,10 @@ def generate_optimized_media(clip_names: List[str] = None) -> str:
         # Clean up flags in case of error
         try:
             for clip in clips_to_process:
-                clip.ClearFlags("Green")
+                try:
+                    clip.ClearFlags("Green")
+                except:
+                    pass
         except:
             pass
         return f"Error generating optimized media: {str(e)}"
@@ -1769,7 +2040,8 @@ def delete_optimized_media(clip_names: List[str] = None) -> str:
         for name in clip_names:
             found = False
             for clip in all_clips:
-                if clip.GetName() == name:
+                clip_name = safe_method_call(clip, "GetName", "", "clip")
+                if clip_name == name:
                     clips_to_process.append(clip)
                     found = True
                     break
@@ -1789,7 +2061,10 @@ def delete_optimized_media(clip_names: List[str] = None) -> str:
         # Select the clips
         media_pool.SetCurrentFolder(media_pool.GetRootFolder())
         for clip in clips_to_process:
-            clip.AddFlag("Green")  # Temporarily add flag to help with selection
+            try:
+                clip.AddFlag("Green")
+            except:
+                pass  # Temporarily add flag to help with selection
         
         # Switch to Media page if not already there
         current_page = resolve.GetCurrentPage()
@@ -1804,7 +2079,10 @@ def delete_optimized_media(clip_names: List[str] = None) -> str:
         
         # Remove temporary flags
         for clip in clips_to_process:
-            clip.ClearFlags("Green")
+            try:
+                clip.ClearFlags("Green")
+            except:
+                pass
         
         if result:
             return f"Successfully deleted optimized media for {len(clips_to_process)} clips"
@@ -1814,7 +2092,10 @@ def delete_optimized_media(clip_names: List[str] = None) -> str:
         # Clean up flags in case of error
         try:
             for clip in clips_to_process:
-                clip.ClearFlags("Green")
+                try:
+                    clip.ClearFlags("Green")
+                except:
+                    pass
         except:
             pass
         return f"Error deleting optimized media: {str(e)}"
@@ -3161,65 +3442,56 @@ def enable_keyframes(timeline_item_id: str, keyframe_mode: str = "All") -> str:
 @mcp.resource("resolve://color/presets")
 def get_color_presets() -> List[Dict[str, Any]]:
     """Get all available color presets in the current project."""
-    if resolve is None:
-        return [{"error": "Not connected to DaVinci Resolve"}]
-    
-    project_manager = resolve.GetProjectManager()
-    if not project_manager:
-        return [{"error": "Failed to get Project Manager"}]
-    
-    current_project = project_manager.GetCurrentProject()
-    if not current_project:
-        return [{"error": "No project currently open"}]
-    
-    # Switch to color page to access presets
-    current_page = resolve.GetCurrentPage()
-    if current_page != "color":
-        resolve.OpenPage("color")
-    
     try:
-        # Get gallery
-        gallery = current_project.GetGallery()
-        if not gallery:
-            return [{"error": "Failed to get gallery"}]
+        # Validate basic access
+        error = validate_project_access()
+        if error:
+            return [error]
         
-        # Get all albums
-        albums = gallery.GetAlbums()
+        # Validate color page access
+        error = validate_page_access("color")
+        if error:
+            return [error]
+        
+        current_project = resolve.GetProjectManager().GetCurrentProject()
+        
+        # Get gallery with safe method call
+        gallery = safe_method_call(current_project, "GetGallery", description="project")
+        if not gallery:
+            return [{"error": "Failed to get gallery", "fix": "Switch to Color page and ensure timeline is loaded"}]
+        
+        # Get all albums with safe method call
+        albums = safe_method_call(gallery, "GetAlbums", default=[], description="gallery")
         if not albums:
-            return [{"info": "No albums found in gallery"}]
+            return [{"info": "No albums found in gallery", "fix": "Create stills in the Color page to see presets"}]
         
         result = []
         for album in albums:
-            # Get stills in the album
-            stills = album.GetStills()
+            # Safely get album info
+            album_name = safe_method_call(album, "GetName", "Unknown Album", "album")
+            stills = safe_method_call(album, "GetStills", default=[], description="album")
+            
             album_info = {
-                "name": album.GetName(),
+                "name": album_name,
                 "stills": []
             }
             
             if stills:
                 for still in stills:
                     still_info = {
-                        "id": still.GetUniqueId(),
-                        "label": still.GetLabel(),
-                        "timecode": still.GetTimecode(),
-                        "isGrabbed": still.IsGrabbed()
+                        "id": safe_method_call(still, "GetUniqueId", "unknown", "still"),
+                        "label": safe_method_call(still, "GetLabel", "Unknown", "still"),
+                        "timecode": safe_method_call(still, "GetTimecode", "00:00:00:00", "still"),
+                        "isGrabbed": safe_method_call(still, "IsGrabbed", False, "still")
                     }
                     album_info["stills"].append(still_info)
             
             result.append(album_info)
         
-        # Return to the original page if we switched
-        if current_page != "color":
-            resolve.OpenPage(current_page)
-            
         return result
-    
     except Exception as e:
-        # Return to the original page if we switched
-        if current_page != "color":
-            resolve.OpenPage(current_page)
-        return [{"error": f"Error retrieving color presets: {str(e)}"}]
+        logger.error(f"Error in get_color_presets: {str(e)}")
+        return [{"error": f"Internal error: {str(e)}", "fix": "Check DaVinci Resolve connection and try again"}]
 
 @mcp.tool()
 def save_color_preset(clip_name: str = None, preset_name: str = None, album_name: str = "DaVinci Resolve") -> str:

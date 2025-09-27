@@ -17,11 +17,11 @@ sys.path.insert(0, str(project_dir))
 # Import the connection utils first to set environment variables
 from src.utils.resolve_connection import check_environment_variables, set_default_environment_variables
 
-# Set up logging
+# Set up logging - explicitly use stderr to avoid MCP protocol conflicts
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    handlers=[logging.StreamHandler()]
+    handlers=[logging.StreamHandler(sys.stderr)]
 )
 logger = logging.getLogger("davinci-resolve-mcp.main")
 
