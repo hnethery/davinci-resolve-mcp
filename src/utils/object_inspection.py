@@ -14,20 +14,27 @@ import inspect
 from typing import Any, Dict, List, Optional, Union, Callable
 
 
-def get_object_methods(obj: Any) -> Dict[str, Dict[str, Any]]:
+def get_object_members(
+    obj: Any,
+    include_methods: bool = True,
+    include_properties: bool = True
+) -> Dict[str, Dict[str, Any]]:
     """
-    Get all methods of a DaVinci Resolve object with their documentation.
+    Get members (methods and/or properties) of a DaVinci Resolve object.
     
     Args:
         obj: A DaVinci Resolve API object
+        include_methods: Whether to include methods in the result
+        include_properties: Whether to include properties in the result
         
     Returns:
-        A dictionary of method names and their details
+        A dictionary containing 'methods' and 'properties' dictionaries.
     """
     if obj is None:
         return {"error": "Cannot inspect None object"}
-    
+
     methods = {}
+    properties = {}
     
     # Get all object attributes
     for attr_name in dir(obj):
@@ -38,8 +45,9 @@ def get_object_methods(obj: Any) -> Dict[str, Dict[str, Any]]:
         try:
             attr = getattr(obj, attr_name)
             
-            # Check if it's a callable method
-            if callable(attr):
+            is_callable = callable(attr)
+
+            if is_callable and include_methods:
                 # Get the method signature if possible
                 try:
                     signature = str(inspect.signature(attr))
@@ -54,13 +62,48 @@ def get_object_methods(obj: Any) -> Dict[str, Dict[str, Any]]:
                     "doc": doc,
                     "type": "method"
                 }
+            elif not is_callable and include_properties:
+                # Get the property value and type
+                properties[attr_name] = {
+                    "value": str(attr),
+                    "type": type(attr).__name__,
+                    "type_category": "property"
+                }
+
         except Exception as e:
-            methods[attr_name] = {
+            # Decide where to put errors or just skip
+            error_entry = {
                 "error": str(e),
                 "type": "error"
             }
+            if include_methods:
+                methods[attr_name] = error_entry
+            if include_properties:
+                properties[attr_name] = {
+                    "error": str(e),
+                    "type_category": "error"
+                }
     
-    return methods
+    return {
+        "methods": methods,
+        "properties": properties
+    }
+
+
+def get_object_methods(obj: Any) -> Dict[str, Dict[str, Any]]:
+    """
+    Get all methods of a DaVinci Resolve object with their documentation.
+
+    Args:
+        obj: A DaVinci Resolve API object
+
+    Returns:
+        A dictionary of method names and their details
+    """
+    result = get_object_members(obj, include_methods=True, include_properties=False)
+    if "error" in result:
+        return result
+    return result["methods"]
 
 
 def get_object_properties(obj: Any) -> Dict[str, Dict[str, Any]]:
@@ -73,37 +116,10 @@ def get_object_properties(obj: Any) -> Dict[str, Dict[str, Any]]:
     Returns:
         A dictionary of property names and their details
     """
-    if obj is None:
-        return {"error": "Cannot inspect None object"}
-    
-    properties = {}
-    
-    # Get all object attributes
-    for attr_name in dir(obj):
-        # Skip private/internal attributes
-        if attr_name.startswith('_'):
-            continue
-            
-        try:
-            attr = getattr(obj, attr_name)
-            
-            # Skip if it's a method
-            if callable(attr):
-                continue
-                
-            # Get the property value and type
-            properties[attr_name] = {
-                "value": str(attr),
-                "type": type(attr).__name__,
-                "type_category": "property"
-            }
-        except Exception as e:
-            properties[attr_name] = {
-                "error": str(e),
-                "type_category": "error"
-            }
-    
-    return properties
+    result = get_object_members(obj, include_methods=False, include_properties=True)
+    if "error" in result:
+        return result
+    return result["properties"]
 
 
 def inspect_object(obj: Any, max_depth: int = 1) -> Dict[str, Any]:
@@ -120,10 +136,14 @@ def inspect_object(obj: Any, max_depth: int = 1) -> Dict[str, Any]:
     if obj is None:
         return {"error": "Cannot inspect None object"}
     
+    members = get_object_members(obj, include_methods=True, include_properties=True)
+    if "error" in members:
+        return members
+
     result = {
         "type": type(obj).__name__,
-        "methods": get_object_methods(obj),
-        "properties": get_object_properties(obj),
+        "methods": members["methods"],
+        "properties": members["properties"],
     }
     
     # Add string representation
@@ -250,8 +270,15 @@ def print_object_help(obj: Any) -> str:
         return "Cannot provide help for None object"
     
     obj_type = type(obj).__name__
-    methods = get_object_methods(obj)
-    properties = get_object_properties(obj)
+
+    # Optimize by getting both at once
+    members = get_object_members(obj)
+    if "error" in members:
+         methods = {}
+         properties = {}
+    else:
+        methods = members["methods"]
+        properties = members["properties"]
     
     help_text = [f"Help for {obj_type} object:"]
     help_text.append("\n" + "=" * 40 + "\n")
@@ -282,4 +309,4 @@ def print_object_help(obj: Any) -> str:
             type_name = info.get("type", "")
             help_text.append(f"{name}: {type_name} = {value}")
     
-    return "\n".join(help_text) 
+    return "\n".join(help_text)
