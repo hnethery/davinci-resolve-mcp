@@ -48,19 +48,42 @@ else
 fi
 
 # Check if DaVinci Resolve is running
-if ps -ef | grep -i "[D]aVinci Resolve" > /dev/null; then
+check_resolve() {
+    ps -ef | grep -i "[D]aVinci Resolve" > /dev/null
+}
+
+if check_resolve; then
     echo -e "${GREEN}✓ DaVinci Resolve is running${NC}"
 else
     echo -e "${RED}✗ DaVinci Resolve is not running${NC}"
     echo -e "${YELLOW}Please start DaVinci Resolve before continuing${NC}"
-    echo -e "${YELLOW}Waiting 10 seconds for you to start DaVinci Resolve...${NC}"
-    sleep 10
-    if ! ps -ef | grep -i "[D]aVinci Resolve" > /dev/null; then
+    echo -e "${YELLOW}Waiting for DaVinci Resolve to start (timeout 30s)...${NC}"
+
+    # Smart polling loop
+    max_retries=30
+    count=0
+    running=false
+
+    echo -n "Waiting "
+    while [ $count -lt $max_retries ]; do
+        if check_resolve; then
+            running=true
+            break
+        fi
+
+        echo -n "."
+        sleep 1
+        ((count++))
+    done
+    echo "" # New line
+
+    if [ "$running" = true ]; then
+        echo -e "${GREEN}✓ DaVinci Resolve is now running${NC}"
+    else
         echo -e "${RED}DaVinci Resolve still not running. Please start it manually.${NC}"
         echo -e "${YELLOW}You can run this script again after starting DaVinci Resolve.${NC}"
         exit 1
     fi
-    echo -e "${GREEN}✓ DaVinci Resolve is now running${NC}"
 fi
 
 # Check if MCP command exists in the virtual environment
@@ -80,4 +103,4 @@ echo -e "${YELLOW}Using server script: $SERVER_PATH${NC}"
 echo ""
 
 cd "$ROOT_DIR"
-"$VENV_DIR/bin/mcp" dev "$SERVER_PATH" 
+"$VENV_DIR/bin/mcp" dev "$SERVER_PATH"
