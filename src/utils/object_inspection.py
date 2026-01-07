@@ -50,7 +50,13 @@ def get_object_members(
             if is_callable and include_methods:
                 # Get the method signature if possible
                 try:
-                    signature = str(inspect.signature(attr))
+                    # Optimization: Only attempt signature for pure Python functions/methods
+                    # DaVinci Resolve API methods are typically C extensions where inspect.signature
+                    # is very slow and usually fails/raises exceptions.
+                    if inspect.isfunction(attr) or inspect.ismethod(attr):
+                        signature = str(inspect.signature(attr))
+                    else:
+                        signature = "()"
                 except (ValueError, TypeError):
                     signature = "()"
                     
