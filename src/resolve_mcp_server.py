@@ -12,12 +12,6 @@ import logging
 import datetime
 from typing import List, Dict, Any, Optional, Union
 
-# Add src directory to Python path
-current_dir = os.path.dirname(os.path.abspath(__file__))
-src_dir = os.path.join(current_dir, 'src')
-if src_dir not in sys.path:
-    sys.path.insert(0, src_dir)
-
 # Import platform utilities
 from src.utils.platform import setup_environment, get_platform, get_resolve_paths
 
@@ -39,6 +33,7 @@ from mcp.server.fastmcp import FastMCP
 
 # Import our utility functions
 from src.utils.platform import setup_environment, get_platform, get_resolve_paths
+from src.utils.ux import print_startup_banner, print_connection_error
 from src.utils.object_inspection import (
     inspect_object,
     get_object_methods,
@@ -95,7 +90,7 @@ logger = logging.getLogger("davinci-resolve-mcp")
 
 # Log server version and platform
 VERSION = "1.3.8"
-logger.info(f"Starting DaVinci Resolve MCP Server v{VERSION}")
+print_startup_banner(VERSION)
 logger.info(f"Detected platform: {get_platform()}")
 logger.info(f"Using Resolve API path: {RESOLVE_API_PATH}")
 logger.info(f"Using Resolve library path: {RESOLVE_LIB_PATH}")
@@ -112,17 +107,14 @@ try:
     if resolve:
         logger.info(f"Connected to DaVinci Resolve: {resolve.GetProductName()} {resolve.GetVersionString()}")
     else:
-        logger.error("Failed to get Resolve object. Is DaVinci Resolve running?")
+        print_connection_error(RESOLVE_API_PATH, RESOLVE_LIB_PATH, RESOLVE_MODULES_PATH)
 except ImportError as e:
-    logger.error(f"Failed to import DaVinciResolveScript: {str(e)}")
-    logger.error("Check that DaVinci Resolve is installed and running.")
-    logger.error(f"RESOLVE_SCRIPT_API: {RESOLVE_API_PATH}")
-    logger.error(f"RESOLVE_SCRIPT_LIB: {RESOLVE_LIB_PATH}")
-    logger.error(f"RESOLVE_MODULES_PATH: {RESOLVE_MODULES_PATH}")
-    logger.error(f"sys.path: {sys.path}")
+    print_connection_error(RESOLVE_API_PATH, RESOLVE_LIB_PATH, RESOLVE_MODULES_PATH)
+    logger.debug(f"Import Error Details: {str(e)}")
     resolve = None
 except Exception as e:
     logger.error(f"Unexpected error initializing Resolve: {str(e)}")
+    print_connection_error(RESOLVE_API_PATH, RESOLVE_LIB_PATH, RESOLVE_MODULES_PATH)
     resolve = None
 
 # ------------------
