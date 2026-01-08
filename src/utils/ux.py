@@ -15,20 +15,28 @@ def print_startup_banner(version):
 
 def print_connection_error(resolve_api_path, resolve_lib_path, modules_path):
     """Prints a helpful error message when Resolve connection fails."""
-    error_msg = [
-        "┌────────────────────────────────────────────────────────┐",
-        "│                  Connection Failed                     │",
-        "│                                                        │",
-        "│  DaVinci Resolve is not reachable.                     │",
-        "│  Please ensure:                                        │",
-        "│  1. DaVinci Resolve is running.                        │",
-        "│  2. Scripting is enabled in:                           │",
-        "│     Preferences > System > General > External Scripting│",
-        "│                                                        │",
-        "│  Debug Info:                                           │",
-        f"│  API Path: {resolve_api_path} ",
-        "└────────────────────────────────────────────────────────┘"
+    content = [
+        "                 Connection Failed                    ",
+        "",
+        " DaVinci Resolve is not reachable.",
+        " Please ensure:",
+        " 1. DaVinci Resolve is running.",
+        " 2. Scripting is enabled in:",
+        "    Preferences > System > General > External Scripting",
+        "",
+        " Debug Info:",
+        f" API Path:     {resolve_api_path}",
+        f" Lib Path:     {resolve_lib_path}",
+        f" Modules Path: {modules_path}"
     ]
 
-    for line in error_msg:
-        logger.error(line)
+    # Calculate max width (maintaining minimum width of original box)
+    max_width = max(len(line) for line in content)
+    max_width = max(max_width, 54)
+
+    border = "─" * (max_width + 2)
+
+    logger.error(f"┌{border}┐")
+    for line in content:
+        logger.error(f"│ {line:<{max_width}} │")
+    logger.error(f"└{border}┘")
