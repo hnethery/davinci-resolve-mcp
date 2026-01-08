@@ -241,6 +241,21 @@ def convert_lua_to_python(lua_obj: Any) -> Any:
         
         # Try to convert to list if it appears numeric-indexed
         try:
+            # Optimization: Use __len__ if available to avoid try-except loop
+            if hasattr(lua_obj, '__len__'):
+                try:
+                    length = len(lua_obj)
+                    if length > 0:
+                        result = []
+                        # Lua arrays typically start at 1
+                        for index in range(1, length + 1):
+                            value = lua_obj[index]
+                            result.append(convert_lua_to_python(value))
+                        return result
+                except Exception:
+                    # Fallback to while loop if len() fails or iteration fails
+                    pass
+
             # Common Lua pattern for numeric arrays (1-indexed)
             result = []
             index = 1  # Lua arrays typically start at 1
