@@ -61,7 +61,14 @@ def get_object_members(
                     signature = "()"
                     
                 # Get the docstring if available
-                doc = inspect.getdoc(attr) or ""
+                # Optimization: Direct access to __doc__ is faster than inspect.getdoc()
+                # especially for C-extension objects where inspect.getdoc can be slow
+                doc = getattr(attr, "__doc__", None)
+                if doc and isinstance(doc, str):
+                    doc = inspect.cleandoc(doc)
+                else:
+                    # Fallback for inherited docstrings
+                    doc = inspect.getdoc(attr) or ""
                 
                 methods[attr_name] = {
                     "signature": signature,
