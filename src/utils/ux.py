@@ -13,10 +13,40 @@ def print_startup_banner(version):
     for line in banner:
         logger.info(line)
 
+def print_connection_success(product_name, version_string):
+    """Prints a success message when connected to DaVinci Resolve."""
+    content = [
+        "Connection Successful! 🟢",
+        "",
+        f" Connected to: {product_name}",
+        f" Version:      {version_string}",
+        "",
+        " 🚀 Ready to accept MCP requests"
+    ]
+
+    # Calculate max width (maintaining minimum width)
+    # Filter out emoji length roughly by treating them as 2 chars or just letting it be slightly loose
+    # len() counts unicode chars correctly usually.
+    max_width = max(len(line) for line in content)
+    max_width = max(max_width, 54)
+
+    border = "─" * (max_width + 2)
+
+    logger.info(f"┌{border}┐")
+    for i, line in enumerate(content):
+        # Center the title (first line)
+        if i == 0:
+            # Manually center considering the emoji which might offset visual center vs char center
+            # But simple centering is usually fine.
+            logger.info(f"│ {line.center(max_width)} │")
+        else:
+            logger.info(f"│ {line:<{max_width}} │")
+    logger.info(f"└{border}┘")
+
 def print_connection_error(resolve_api_path, resolve_lib_path, modules_path):
     """Prints a helpful error message when Resolve connection fails."""
     content = [
-        "                 Connection Failed                    ",
+        "Connection Failed 🔴",
         "",
         " DaVinci Resolve is not reachable.",
         " Please ensure:",
@@ -37,6 +67,10 @@ def print_connection_error(resolve_api_path, resolve_lib_path, modules_path):
     border = "─" * (max_width + 2)
 
     logger.error(f"┌{border}┐")
-    for line in content:
-        logger.error(f"│ {line:<{max_width}} │")
+    for i, line in enumerate(content):
+        # Center the title (first line)
+        if i == 0:
+            logger.error(f"│ {line.center(max_width)} │")
+        else:
+            logger.error(f"│ {line:<{max_width}} │")
     logger.error(f"└{border}┘")
