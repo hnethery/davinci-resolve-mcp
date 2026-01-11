@@ -5,6 +5,7 @@
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[0;33m'
+BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
 # Get the directory where this script is located
@@ -53,9 +54,33 @@ if ps -ef | grep -i "[D]aVinci Resolve" > /dev/null; then
 else
     echo -e "${RED}✗ DaVinci Resolve is not running${NC}"
     echo -e "${YELLOW}Please start DaVinci Resolve before continuing${NC}"
-    echo -e "${YELLOW}Waiting 10 seconds for you to start DaVinci Resolve...${NC}"
-    sleep 10
-    if ! ps -ef | grep -i "[D]aVinci Resolve" > /dev/null; then
+    echo -e "${BLUE}Waiting for DaVinci Resolve to start... (30s timeout)${NC}"
+
+    RESOLVE_RUNNING=false
+    SPINNER_CHARS='|/-\'
+
+    # Wait up to 30 seconds, polling every 1 second
+    for i in {1..30}; do
+        if ps -ef | grep -i "[D]aVinci Resolve" > /dev/null; then
+            # Clear the waiting line
+            echo -ne "\r\033[K"
+            echo -e "${GREEN}✓ DaVinci Resolve detected!${NC}"
+            RESOLVE_RUNNING=true
+            break
+        fi
+
+        # Spinner animation
+        SPINNER_IDX=$(( (i - 1) % 4 ))
+        SPINNER_CHAR=${SPINNER_CHARS:$SPINNER_IDX:1}
+
+        echo -ne "\rWaiting... $SPINNER_CHAR (${i}/30s)"
+        sleep 1
+    done
+
+    # Clear the spinner line
+    echo -ne "\r\033[K"
+
+    if [ "$RESOLVE_RUNNING" != "true" ]; then
         echo -e "${RED}DaVinci Resolve still not running. Please start it manually.${NC}"
         echo -e "${YELLOW}You can run this script again after starting DaVinci Resolve.${NC}"
         exit 1
@@ -80,4 +105,4 @@ echo -e "${YELLOW}Using server script: $SERVER_PATH${NC}"
 echo ""
 
 cd "$ROOT_DIR"
-"$VENV_DIR/bin/mcp" dev "$SERVER_PATH" 
+"$VENV_DIR/bin/mcp" dev "$SERVER_PATH"
