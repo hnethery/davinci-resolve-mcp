@@ -40,3 +40,25 @@ def print_connection_error(resolve_api_path, resolve_lib_path, modules_path):
     for line in content:
         logger.error(f"│ {line:<{max_width}} │")
     logger.error(f"└{border}┘")
+
+def print_connection_success(product_name, version_string):
+    """Prints a success message when connected to Resolve."""
+    content = [
+        "             Connection Successful!                   ",
+        "",
+        f" Connected to: {product_name}",
+        f" Version:      {version_string}",
+        "",
+        " Ready to accept MCP requests."
+    ]
+
+    # Calculate max width (maintaining minimum width of original box)
+    max_width = max(len(line) for line in content)
+    max_width = max(max_width, 54)
+
+    border = "─" * (max_width + 2)
+
+    logger.info(f"┌{border}┐")
+    for line in content:
+        logger.info(f"│ {line:<{max_width}} │")
+    logger.info(f"└{border}┘")

@@ -33,7 +33,7 @@ from mcp.server.fastmcp import FastMCP
 
 # Import our utility functions
 from src.utils.platform import setup_environment, get_platform, get_resolve_paths
-from src.utils.ux import print_startup_banner, print_connection_error
+from src.utils.ux import print_startup_banner, print_connection_error, print_connection_success
 from src.utils.object_inspection import (
     inspect_object,
     get_object_methods,
@@ -105,7 +105,7 @@ try:
     import DaVinciResolveScript as dvr_script
     resolve = dvr_script.scriptapp("Resolve")
     if resolve:
-        logger.info(f"Connected to DaVinci Resolve: {resolve.GetProductName()} {resolve.GetVersionString()}")
+        print_connection_success(resolve.GetProductName(), resolve.GetVersionString())
     else:
         print_connection_error(RESOLVE_API_PATH, RESOLVE_LIB_PATH, RESOLVE_MODULES_PATH)
 except ImportError as e:
