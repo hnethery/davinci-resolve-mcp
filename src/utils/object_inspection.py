@@ -61,7 +61,10 @@ def get_object_members(
                     signature = "()"
                     
                 # Get the docstring if available
-                doc = inspect.getdoc(attr) or ""
+                # Optimization: Direct access is significantly faster than inspect.getdoc()
+                doc = getattr(attr, "__doc__", "") or ""
+                if doc and isinstance(doc, str):
+                    doc = doc.strip()
                 
                 methods[attr_name] = {
                     "signature": signature,
