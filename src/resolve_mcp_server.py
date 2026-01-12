@@ -33,7 +33,7 @@ from mcp.server.fastmcp import FastMCP
 
 # Import our utility functions
 from src.utils.platform import setup_environment, get_platform, get_resolve_paths
-from src.utils.ux import print_startup_banner, print_connection_error, print_connection_success
+from src.utils.ux import print_startup_banner, print_connection_error, print_connection_success, print_goodbye
 from src.utils.object_inspection import (
     inspect_object,
     get_object_methods,
@@ -4905,7 +4905,7 @@ if __name__ == "__main__":
         # Note: The MCP CLI tool handles port configuration, not FastMCP directly
         mcp.run()
     except KeyboardInterrupt:
-        logger.info("Server shutdown requested")
+        print_goodbye()
     except Exception as e:
         logger.error(f"Server error: {str(e)}")
         sys.exit(1) 
