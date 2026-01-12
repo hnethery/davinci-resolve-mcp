@@ -1277,10 +1277,9 @@ def link_proxy_media(clip_name: str, proxy_file_path: str) -> str:
         return "Error: Failed to get Media Pool"
     
     # Find the clip by name
-    clips = get_all_media_pool_clips(media_pool)
     target_clip = None
     
-    for clip in clips:
+    for clip in iter_all_media_pool_clips(media_pool):
         if clip.GetName() == clip_name:
             target_clip = clip
             break
@@ -1324,10 +1323,9 @@ def unlink_proxy_media(clip_name: str) -> str:
         return "Error: Failed to get Media Pool"
     
     # Find the clip by name
-    clips = get_all_media_pool_clips(media_pool)
     target_clip = None
     
-    for clip in clips:
+    for clip in iter_all_media_pool_clips(media_pool):
         if clip.GetName() == clip_name:
             target_clip = clip
             break
@@ -1368,10 +1366,9 @@ def replace_clip(clip_name: str, replacement_path: str) -> str:
         return "Error: Failed to get Media Pool"
     
     # Find the clip by name
-    clips = get_all_media_pool_clips(media_pool)
     target_clip = None
     
-    for clip in clips:
+    for clip in iter_all_media_pool_clips(media_pool):
         if clip.GetName() == clip_name:
             target_clip = clip
             break
@@ -1416,10 +1413,9 @@ def transcribe_audio(clip_name: str, language: str = "en-US") -> str:
         return "Error: Failed to get Media Pool"
     
     # Find the clip by name
-    clips = get_all_media_pool_clips(media_pool)
     target_clip = None
     
-    for clip in clips:
+    for clip in iter_all_media_pool_clips(media_pool):
         if clip.GetName() == clip_name:
             target_clip = clip
             break
@@ -1459,10 +1455,9 @@ def clear_transcription(clip_name: str) -> str:
         return "Error: Failed to get Media Pool"
     
     # Find the clip by name
-    clips = get_all_media_pool_clips(media_pool)
     target_clip = None
     
-    for clip in clips:
+    for clip in iter_all_media_pool_clips(media_pool):
         if clip.GetName() == clip_name:
             target_clip = clip
             break
@@ -1480,23 +1475,33 @@ def clear_transcription(clip_name: str) -> str:
         return f"Error clearing audio transcription: {str(e)}"
 
 # Utility function to get all clips from the media pool (recursively)
-def get_all_media_pool_clips(media_pool):
-    """Get all clips from media pool recursively including subfolders."""
-    clips = []
+def iter_all_media_pool_clips(media_pool):
+    """Yield all clips from media pool recursively including subfolders."""
     root_folder = media_pool.GetRootFolder()
     
-    def process_folder(folder):
+    # Use iterative stack to avoid recursion limits and overhead
+    stack = [root_folder]
+
+    while stack:
+        folder = stack.pop()
+
+        # Yield clips in this folder
         folder_clips = safe_method_call(folder, "GetClipList", [], "folder")
         if folder_clips:
-            clips.extend(folder_clips)
+            for clip in folder_clips:
+                yield clip
         
+        # Add subfolders to stack
         sub_folders = safe_method_call(folder, "GetSubFolderList", [], "folder")
         if sub_folders:
-            for sub_folder in sub_folders:
-                process_folder(sub_folder)
-    
-    process_folder(root_folder)
-    return clips
+            # We add subfolders to stack in reverse order so they are processed
+            # in the original order when popped (LIFO)
+            for sub_folder in reversed(sub_folders):
+                stack.append(sub_folder)
+
+def get_all_media_pool_clips(media_pool):
+    """Get all clips from media pool recursively including subfolders."""
+    return list(iter_all_media_pool_clips(media_pool))
 
 @mcp.tool()
 def export_folder(folder_name: str, export_path: str, export_type: str = "DRB") -> str:
@@ -1937,23 +1942,22 @@ def generate_optimized_media(clip_names: List[str] = None) -> str:
     # Get clips to process
     if clip_names:
         # Get specified clips
-        all_clips = get_all_media_pool_clips(media_pool)
         clips_to_process = []
-        missing_clips = []
+        # Use a set for missing clips tracking
+        missing_clips = set(clip_names)
         
-        for name in clip_names:
-            found = False
-            for clip in all_clips:
-                clip_name = safe_method_call(clip, "GetName", "", "clip")
-                if clip_name == name:
-                    clips_to_process.append(clip)
-                    found = True
+        # Iterate once through all clips
+        for clip in iter_all_media_pool_clips(media_pool):
+            clip_name = safe_method_call(clip, "GetName", "", "clip")
+            if clip_name in missing_clips:
+                clips_to_process.append(clip)
+                missing_clips.remove(clip_name)
+                # If we found all clips, stop early
+                if not missing_clips:
                     break
-            if not found:
-                missing_clips.append(name)
         
         if missing_clips:
-            return f"Error: Could not find these clips: {', '.join(missing_clips)}"
+            return f"Error: Could not find these clips: {', '.join(list(missing_clips))}"
         
         if not clips_to_process:
             return "Error: No valid clips found to process"
@@ -2029,23 +2033,22 @@ def delete_optimized_media(clip_names: List[str] = None) -> str:
     # Get clips to process
     if clip_names:
         # Get specified clips
-        all_clips = get_all_media_pool_clips(media_pool)
         clips_to_process = []
-        missing_clips = []
+        # Use a set for missing clips tracking
+        missing_clips = set(clip_names)
         
-        for name in clip_names:
-            found = False
-            for clip in all_clips:
-                clip_name = safe_method_call(clip, "GetName", "", "clip")
-                if clip_name == name:
-                    clips_to_process.append(clip)
-                    found = True
+        # Iterate once through all clips
+        for clip in iter_all_media_pool_clips(media_pool):
+            clip_name = safe_method_call(clip, "GetName", "", "clip")
+            if clip_name in missing_clips:
+                clips_to_process.append(clip)
+                missing_clips.remove(clip_name)
+                # If we found all clips, stop early
+                if not missing_clips:
                     break
-            if not found:
-                missing_clips.append(name)
         
         if missing_clips:
-            return f"Error: Could not find these clips: {', '.join(missing_clips)}"
+            return f"Error: Could not find these clips: {', '.join(list(missing_clips))}"
         
         if not clips_to_process:
             return "Error: No valid clips found to process"
